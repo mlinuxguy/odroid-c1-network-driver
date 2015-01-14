@@ -85,6 +85,11 @@ static int rtl8211e_config_init(struct phy_device *phydev)
         phy_write(phydev, RTL8211F_PHYCTRL, 0x9200);    // PHY reset
         msleep(20); 
 
+		val = phy_read(phydev, 0x09);
+		phy_write(phydev, 0x09, val|(1<<9));	// advertise 1000base-T full duplex
+		val = phy_read(phydev, 0x00);
+		phy_write(phydev, 0x00, val|(1<<9));	// restart auto-neg
+
 		phy_write(phydev, 31, 0x0a43); /* 3, hk test values */
 		phy_write(phydev, 27, 0x8011);
 		phy_write(phydev, 28, 0x573f);
