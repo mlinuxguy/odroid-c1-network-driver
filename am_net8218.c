@@ -153,6 +153,7 @@ static void data_dump(unsigned char *p, int len)
  * @param  len
  */
 /* --------------------------------------------------------------------------*/
+#ifdef M_DEBUG_ON
 static void tx_data_dump(unsigned char *p, int len)
 {
 	if ((g_debug == 3) || (g_debug == 5)) {
@@ -182,7 +183,7 @@ static void rx_data_dump(unsigned char *p, int len)
 
 	return;
 }
-
+#endif
 /* --------------------------------------------------------------------------*/
 /**
  * @brief  netdev_ioctl
@@ -411,6 +412,7 @@ static int free_ringdesc(struct net_device *dev)
  */
 /* --------------------------------------------------------------------------*/
 static __attribute__((flatten)) void update_status(struct net_device *dev, unsigned long status,
+//static void inline update_status(struct net_device *dev, unsigned long status,
                                 unsigned long mask)
 {
 	struct am_net_private *np = netdev_priv(dev);
@@ -597,21 +599,23 @@ void net_tasklettx(unsigned long dev_instance)
 		c_tx = np->tx_ring + (c_tx - np->tx_ring_dma);
 		tx = np->start_tx;
 		CACHE_RSYNC(tx, sizeof(struct _tx_desc));
-		while (tx != NULL && tx != c_tx && !(tx->status & DescOwnByDma)) {
+		while (likely(tx != NULL && tx != c_tx && !(tx->status & DescOwnByDma))) {
 #ifdef DMA_USE_SKB_BUF
 			tx_count++;
 
 			if(unlikely(!spin_trylock_irqsave(&np->lock,flags)))
-                        {
-                            break;
-                        }
-			if (tx->skb != NULL) {
+			{
+				break;
+			}
+			if (likely(tx->skb != NULL)) {
 				//clear to next send;
-				if (np->tx_full) {
+				if (likely(np->tx_full)) {
 					netif_wake_queue(dev);
 					np->tx_full = 0;
 				}
+#ifdef M_DEBUG_ON
 				tx_data_dump((unsigned char *)tx->buf, tx->skb->len);
+#endif
 				if (tx->buf_dma != 0) {
 					dma_unmap_single(&dev->dev, tx->buf_dma, np->rx_buf_sz, DMA_TO_DEVICE);
 				}
@@ -659,9 +663,9 @@ void net_taskletrx(unsigned long dev_instance)
 		c_rx = (void *)readl((void*)(np->base_addr + ETH_DMA_19_Curr_Host_Re_Descriptor));
 		c_rx = np->rx_ring + (c_rx - np->rx_ring_dma);
 		rx = np->last_rx->next;
-		while (rx != NULL) {
+		while (likely(rx != NULL)) {
 			CACHE_RSYNC(rx, sizeof(struct _rx_desc));
-			if (!(rx->status & (DescOwnByDma))) {
+			if (likely(!(rx->status & (DescOwnByDma)))) {
 				int ip_summed = CHECKSUM_UNNECESSARY;
 				rx_cnt++;
 				len = (rx->status & DescFrameLengthMask) >> DescFrameLengthShift;
@@ -688,21 +692,19 @@ void net_taskletrx(unsigned long dev_instance)
 					break;
 				}
 
-				if (rx->buf_dma != 0) {
+				if (likely(rx->buf_dma != 0)) {
 					dma_unmap_single(&dev->dev, rx->buf_dma,/* np->rx_buf_sz*/len, DMA_FROM_DEVICE);
 				}
 				if (rx->skb->len > 0) {
-                                        printk("skb have data before,skb=%p,len=%d\n", rx->skb, rx->skb->len);
-                                        rx->skb = NULL;
-                                        goto to_next;
-                                }
-                                skb_put(rx->skb, len);
-                                rx->skb->dev = dev;
-                                rx->skb->protocol =
-                                    eth_type_trans(rx->skb, dev);
-                                /*we have checked in hardware;
-                                   we not need check again */
-                                rx->skb->ip_summed = ip_summed;
+               		printk("skb have data before,skb=%p,len=%d\n", rx->skb, rx->skb->len);
+                   	rx->skb = NULL;
+                   	goto to_next;
+				}
+				skb_put(rx->skb, len);
+				rx->skb->dev = dev;
+				rx->skb->protocol = eth_type_trans(rx->skb, dev);
+				/*we have checked in hardware; we not need check again */
+				rx->skb->ip_summed = ip_summed;
 				rx->buf_dma = 0;
 				netif_rx(rx->skb);
 				rx->skb = NULL;
@@ -715,7 +717,7 @@ void net_taskletrx(unsigned long dev_instance)
 				}
 				skb_reserve(skb, 2);
 				skb_put(skb, len);
-				if (rx->buf_dma != NULL) {
+				if (likely(rx->buf_dma != NULL)) {
 					dma_unmap_single(&dev->dev, (void *)rx->buf_dma, np->rx_buf_sz, DMA_FROM_DEVICE);
 				}
 				memcpy(skb->data, (void *)rx->buf, len);
@@ -727,7 +729,9 @@ void net_taskletrx(unsigned long dev_instance)
 				dev->last_rx = jiffies;
 				np->stats.rx_packets++;
 				np->stats.rx_bytes += len;
+#ifdef M_DEBUG_ON
 				rx_data_dump((unsigned char *)rx->buf,len);
+#endif
 to_next:
 #ifdef DMA_USE_SKB_BUF
 				if (rx->skb) {
@@ -778,7 +782,8 @@ static __attribute__((flatten)) irqreturn_t intr_handler(int irq, void *dev_inst
 	unsigned long status = 0;
 	unsigned long mask = 0;
 	writel(0, (void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));//disable irq
-	np->pmt = readl((void*)(np->base_addr + ETH_MAC_PMT_Control_and_Status));
+//	np->pmt = readl((void*)(np->base_addr + ETH_MAC_PMT_Control_and_Status));
+//	apparently above not used in the driver
 	status = readl((void*)(np->base_addr + ETH_DMA_5_Status));
 	mask = readl((void*)(np->base_addr + ETH_MAC_Interrupt_Mask));
 	update_status(dev, status, mask);
@@ -1291,10 +1296,11 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 	if (!running) {
 		return -1;
 	}
+#ifdef M_DEBUG_ON
 	if (g_debug > 2) {
 		printk(KERN_DEBUG "%s: Transmit frame queued\n", dev->name);
 	}
-	tasklet_disable(&np->rx_tasklet);
+#endif
 	tasklet_disable(&np->tx_tasklet);
 	spin_lock_irqsave(&np->lock, flags);
 	writel(0,(void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));
@@ -1307,9 +1313,11 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 	CACHE_RSYNC(tx, sizeof(*tx));
 	if (tx->status & DescOwnByDma) {
 		//spin_unlock_irqrestore(&np->lock, flags);
+#ifdef M_DEBUG_ON
 		if (g_debug > 2) {
 			printk("tx queue is full \n");
 		}
+#endif
 		goto err;
 	}
 #ifdef DMA_USE_SKB_BUF
@@ -1350,7 +1358,6 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 	writel(1,(void*)(np->base_addr + ETH_DMA_1_Tr_Poll_Demand));
 	writel(np->irq_mask, (void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));	
 	spin_unlock_irqrestore(&np->lock, flags);
-	tasklet_enable(&np->rx_tasklet);
 	tasklet_enable(&np->tx_tasklet);
 	return NETDEV_TX_OK;
 err:
@@ -1359,7 +1366,6 @@ err:
 	netif_stop_queue(dev);
 	writel(np->irq_mask,(void*) (np->base_addr + ETH_DMA_7_Interrupt_Enable));
 	spin_unlock_irqrestore(&np->lock, flags);
-	tasklet_enable(&np->rx_tasklet);
 	tasklet_enable(&np->tx_tasklet);
 	return NETDEV_TX_BUSY;
 }
