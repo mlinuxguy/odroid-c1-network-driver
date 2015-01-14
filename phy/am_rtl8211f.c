@@ -78,27 +78,30 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 		phy_write(phydev, 31, 0x0a43); /* 3, hk test values */
 		phy_write(phydev, 27, 0x8011); // I do it twice since not sure yet if it survives PHY reset
 		phy_write(phydev, 28, 0x573f); // boosted perf about 2-3%
+//======= testing items that must be set before reset called to have effect =====
+		val = phy_read(phydev, 0x04);
+		phy_write(phydev, 0x04, val|(1<<11)|(1<<10));	// advert asymm pause and pause frames	
 
         phy_write(phydev, RTL8211F_PHYCTRL, 0x9200);    // PHY reset
-        msleep(10); 
+        msleep(20); 
 
 		phy_write(phydev, 31, 0x0a43); /* 3, hk test values */
 		phy_write(phydev, 27, 0x8011);
 		phy_write(phydev, 28, 0x573f);
-		// more experimentation needed below to see if these are proper values
+		// more experimentation needed below to see if these are correct values
 /* we want to disable eee */
+// commenting the next 4 out stops net from working, so don't mess with them
         phy_write(phydev, RTL8211F_MMD_CTRL, 0x7);
-
         phy_write(phydev, RTL8211F_MMD_DATA, 0x3c);
-
         phy_write(phydev, RTL8211F_MMD_CTRL, 0x4007);
-
         phy_write(phydev, RTL8211F_MMD_DATA, 0x0);
 
         
 /* disable 1000m adv*/
-	val = phy_read(phydev, 0x9);
-	phy_write(phydev, 0x9, val&(~(1<<9))); 
+// no idea why he did this, commenting it out seems to change nothing on a broadcom switch
+// would need to see if it helps on athero's switches
+//	val = phy_read(phydev, 0x9);
+//	phy_write(phydev, 0x9, val&(~(1<<9))); 
   /* rx reg 21 bit 3 tx reg 17 bit 8*/  
     /*    phy_write(phydev, 0x1f, 0xd08);
         val =  phy_read(phydev, 0x15);

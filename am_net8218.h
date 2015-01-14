@@ -42,8 +42,8 @@
 
 //ring buf must less than the MAX alloc length 131072
 //131072/1536~=85;
-#define TX_RING_SIZE 	2048	// 512 gives 35-40mb/sec
-#define RX_RING_SIZE 	2048  	// 512 gives 51mb/sec
+#define TX_RING_SIZE 	512	    // 512 gives 35-40mb/sec
+#define RX_RING_SIZE 	4096  	// 512 gives 51mb/sec
 // lower gives slower perf, very high inconsistent with spikes
 // 768 gives around 50mb
 // RX of 2048 gives around 56mb/sec w/RPS 63mb/sec
