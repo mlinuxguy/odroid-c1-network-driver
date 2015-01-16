@@ -1905,10 +1905,21 @@ static void am_net_dump_phyreg(void)
 		return;
 
 	printk("========== ETH PHY regs ==========\n");
-	for (reg = 0; reg < 32; reg++) {
+	for (reg = 0; reg < 16; reg++) {
 		val = mdio_read(np->mii, np->phy_addr, reg);
-		printk("[reg_%d] 0x%x\n", reg, val);
+		printk("[reg_%02d, 0x%02x] 0x%04x\n", reg, reg, val);
 	}
+	mdio_write(np->mii, np->phy_addr, 31, 0xa43);
+	printk("========== ETH PHY regs ==========\n");
+	for (reg = 24; reg < 32; reg++) {
+		val = mdio_read(np->mii, np->phy_addr, reg);
+		printk("[reg_%02d, 0x%02x] 0x%04x - ext43\n", reg, reg, val);
+	}
+	mdio_write(np->mii, np->phy_addr, 31, 0xa46);
+	val = mdio_read(np->mii, np->phy_addr, reg);
+	printk("========== ETH PHY regs ==========\n");
+	printk("[reg_%02d, 0x%02x] 0x%04x - ext46\n", reg, reg, val);
+	mdio_write(np->mii, np->phy_addr, 31, 0);
 }
 
 /* --------------------------------------------------------------------------*/
