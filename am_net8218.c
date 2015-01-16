@@ -1920,6 +1920,32 @@ static void am_net_dump_phyreg(void)
 	printk("========== ETH PHY regs ==========\n");
 	printk("[reg_%02d, 0x%02x] 0x%04x - ext46\n", reg, reg, val);
 	mdio_write(np->mii, np->phy_addr, 31, 0);
+	// following registers from /usr/src/linux/include/uapi/linux/mii.h
+	spin_lock_irq(&np->lock);
+	val = mdio_read(np->mii, np->phy_addr, MII_BMSR);
+	spin_unlock_irq(&np->lock);
+	printk("========== MII_BMSR status ==========\n");
+	printk("0x%04x\n", val);
+	spin_lock_irq(&np->lock);
+	val = mdio_read(np->mii, np->phy_addr, MII_STAT1000);
+	spin_unlock_irq(&np->lock);
+	printk("========== MII_STAT1000 1000Base-T status ==========\n");
+	printk("0x%04x\n", val);
+	spin_lock_irq(&np->lock);
+	val = mdio_read(np->mii, np->phy_addr, MII_LPA);
+	spin_unlock_irq(&np->lock);
+	printk("========== MII_LPA link partner ability reg ==========\n");
+	printk("0x%04x\n", val);
+	spin_lock_irq(&np->lock);
+	val = mdio_read(np->mii, np->phy_addr, MII_ESTATUS);
+	spin_unlock_irq(&np->lock);
+	printk("========== MII_ESTATUS link partner ability reg ==========\n");
+	printk("0x%04x\n", val);
+	spin_lock_irq(&np->lock);
+	val = mdio_read(np->mii, np->phy_addr, MII_EXPANSION);
+	spin_unlock_irq(&np->lock);
+	printk("========== MII_EXPANSION auto-neg expansion reg  ==========\n");
+	printk("0x%04x\n", val);
 }
 
 /* --------------------------------------------------------------------------*/
