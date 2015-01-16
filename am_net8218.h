@@ -44,8 +44,8 @@
 //131072/1536~=85;
 #define TX_RING_SIZE 	16384	// 512, 32768
 #define RX_RING_SIZE 	32768  	// 4096, 65536
-#define TX_THROT		20		// how many tx packets per tasklet
-#define RX_THROT		120		// how many rx packets per tasklet
+#define TX_THROT		TX_RING_SIZE / 2	// how many tx packets per tasklet
+#define RX_THROT		RX_RING_SIZE / 2	// how many rx packets per tasklet
 #define TX_THROTL		8		// lower limit that you can set on TX
 #define RX_THROTL		8		// lower limit that you can set on RX
 #define CACHE_LINE 32
