@@ -423,11 +423,11 @@ static __attribute__((flatten)) void update_status(struct net_device *dev, unsig
 	}
 #endif
 	if (likely(status & NOR_INTR_EN)) {	//Normal Interrupts Process
-		if (status & RX_INTR_EN) {	//Receive Interrupt Process
+		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
 			writel((1 << 6 | 1 << 16), (void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->rx_tasklet);
 		}
-		if (status & TX_INTR_EN) {	//Transmit Interrupt Process
+		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
 			writel(1,(void*)(np->base_addr + ETH_DMA_1_Tr_Poll_Demand));
 			netif_wake_queue(dev);
 			writel((1 << 0 | 1 << 16),(void*)(np->base_addr + ETH_DMA_5_Status));
@@ -452,7 +452,6 @@ static __attribute__((flatten)) void update_status(struct net_device *dev, unsig
 			np->stats.rx_over_errors++;
 			writel(1, (void*)(np->base_addr + ETH_DMA_2_Re_Poll_Demand));
 			tasklet_schedule(&np->rx_tasklet);
-			//printk(KERN_WARNING DRV_NAME "Receive Buffer Unavailable\n");
 #ifdef M_DEBUG_ON
 			if (g_debug > 1) {
 				printk(KERN_WARNING "[" DRV_NAME "]" "Rx bufer unenable\n");
@@ -580,6 +579,7 @@ static void inline print_rx_error_log(unsigned long status)
 /* --------------------------------------------------------------------------*/
 // todo: need to figure out how to either get multiple RX, TX queues on diff processors
 // or quit hammering CPU0 so much.  Perhaps split the priv->phy info into TX, RX versions
+// note: problem with high CPU0 irq is due to usb1, uart, and vsync IRQ
 void net_tasklettx(unsigned long dev_instance)
 {
 	struct net_device *dev = (struct net_device *)dev_instance;
@@ -886,13 +886,11 @@ static int aml_mac_init(struct net_device *ndev)
 	data_dump(ndev->dev_addr, 6);
 
 	write_mac_addr(ndev, ndev->dev_addr);
-
 	val = 0xc80c |		//8<<8 | 8<<17; //tx and rx all 8bit mode;
 	      1 << 10 | 1 << 24;		//checksum offload enabled
 #ifdef MAC_LOOPBACK_TEST
 	val |= 1 << 12; //mac loop back
 #endif
-
 	writel(val, (void*)(np->base_addr + ETH_MAC_0_Configuration));
 
 	val = 1 << 4;/*receive all muticast*/
@@ -927,7 +925,8 @@ static void aml_adjust_link(struct net_device *dev)
 
 	if (phydev == NULL)
 		return;
-
+//#define P_PREG_ETHERNET_ADDR0 CBUS_REG_ADDR(PREG_ETHERNET_ADDR0)
+//#define PREG_ETHERNET_ADDR0 0x2042  ///../ucode/register.h:450
 	spin_lock_irqsave(&priv->lock, flags);
 	if(phydev->phy_id == INTERNALPHY_ID){
 		val = (8<<27)|(7 << 24)|(1<<16)|(1<<15)|(1 << 13)|(1 << 12)|(4 << 4)|(0 << 1);

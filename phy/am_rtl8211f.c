@@ -63,6 +63,7 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 		// if we don't enable EEE then it gets stuck requesting DHCP address and no lan
         phy_write(phydev, RTL8211F_REGPAGE, 0x0000);    // return to page 0
         /* Enable RXC SSC */
+// flag: bad
 //        phy_write(phydev, RTL8211F_REGPAGE, 0x0c44);    // return to page 0xc44
 //        phy_write(phydev, RTL8211F_RXCSSC, 0x5f00);     // enable RXC SSC
 //        phy_write(phydev, RTL8211F_REGPAGE, 0x0000);    // return to page 0
@@ -103,6 +104,7 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 
         
 /* disable 1000m adv*/
+// flag: bad
 // no idea why he did this, commenting it out seems to change nothing on a broadcom switch
 // would need to see if it helps on athero's switches
 //	val = phy_read(phydev, 0x9);
