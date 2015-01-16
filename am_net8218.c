@@ -76,8 +76,9 @@ static int g_debug = CONFIG_AM_ETHERNET_DEBUG_LEVEL;
 #else
 static int g_debug = 1;
 #endif
-static unsigned int g_tx_cnt = 0; // these 2 are not used anymore
-static unsigned int g_rx_cnt = 0;
+// These two now control how many packets per tasklet are sent/received
+static unsigned int g_tx_cnt = TX_THROT; 
+static unsigned int g_rx_cnt = RX_THROT;
 static int g_mdcclk = 2;
 static int new_maclogic = 0;
 static unsigned int ethbaseaddr = ETHBASE;
@@ -411,8 +412,8 @@ static int free_ringdesc(struct net_device *dev)
  * @return
  */
 /* --------------------------------------------------------------------------*/
-static __attribute__((flatten)) void update_status(struct net_device *dev, unsigned long status,
-//static void inline update_status(struct net_device *dev, unsigned long status,
+//static __attribute__((flatten)) void update_status(struct net_device *dev, unsigned long status,
+static void inline update_status(struct net_device *dev, unsigned long status,
                                 unsigned long mask)
 {
 	struct am_net_private *np = netdev_priv(dev);
@@ -580,7 +581,7 @@ static void inline print_rx_error_log(unsigned long status)
 // todo: need to figure out how to either get multiple RX, TX queues on diff processors
 // or quit hammering CPU0 so much.  Perhaps split the priv->phy info into TX, RX versions
 // note: problem with high CPU0 irq is due to usb1, uart, and vsync IRQ
-void net_tasklettx(unsigned long dev_instance)
+__attribute__((flatten)) void net_tasklettx(unsigned long dev_instance)
 {
 	struct net_device *dev = (struct net_device *)dev_instance;
 	struct am_net_private *np = netdev_priv(dev);
@@ -639,13 +640,16 @@ void net_tasklettx(unsigned long dev_instance)
 #endif
 			tx = tx->next;
 			CACHE_RSYNC(tx, sizeof(struct _tx_desc));
+			if (unlikely(tx_count >= g_tx_cnt)) {
+					break;		// throttle
+			}
 		}
 		np->start_tx = tx;
 releasetx:
 	writel(np->irq_mask, (void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));
 }
 
-void net_taskletrx(unsigned long dev_instance)
+__attribute__((flatten)) void net_taskletrx(unsigned long dev_instance)
 {
 	struct net_device *dev = (struct net_device *)dev_instance;
 	struct am_net_private *np = netdev_priv(dev);
@@ -687,7 +691,7 @@ void net_taskletrx(unsigned long dev_instance)
 				}
 				len = len - 4;	//clear the crc
 #ifdef DMA_USE_SKB_BUF
-				if (rx->skb == NULL) {
+				if (unlikely(rx->skb == NULL)) {
 					printk("NET skb pointer error!!!\n");
 					break;
 				}
@@ -738,7 +742,7 @@ to_next:
 					dev_kfree_skb_any(rx->skb);
 				}
 				rx->skb = dev_alloc_skb(np->rx_buf_sz );
-				if (rx->skb == NULL) {
+				if (unlikely(rx->skb == NULL)) {
 					printk(KERN_ERR "error to alloc the skb\n");
 					rx->buf = 0;
 					rx->buf_dma = 0;
@@ -759,6 +763,9 @@ to_next:
 				rx = rx->next;
 			} else {
 				break;
+			}
+			if (unlikely(rx_cnt >= g_rx_cnt)) {
+					break;	// throttle
 			}
 		}
 releaserx:
@@ -2497,7 +2504,7 @@ static ssize_t eth_debug_store(struct class *class, struct class_attribute *attr
 
 /* --------------------------------------------------------------------------*/
 /**
- * @brief  eth_count_show
+ * @brief  eth_thrcount_show
  *
  * @param  class
  * @param  attr
@@ -2506,41 +2513,43 @@ static ssize_t eth_debug_store(struct class *class, struct class_attribute *attr
  * @return
  */
 /* --------------------------------------------------------------------------*/
-static ssize_t eth_count_show(struct class *class, struct class_attribute *attr, char *buf)
+static ssize_t eth_rxthrcount_show(struct class *class, struct class_attribute *attr, char *buf)
 {
-	printk("Ethernet TX count: %08d\n", g_tx_cnt);
-	printk("Ethernet RX count: %08d\n", g_rx_cnt);
-
-	return 0;
+	printk("Ethernet RX throttle value: %d\n", g_rx_cnt);
+	return (sprintf(buf,"%d\nRange: %d - %d\n", g_rx_cnt, RX_THROTL, RX_RING_SIZE));
 }
 
-/* --------------------------------------------------------------------------*/
-/**
- * @brief  eth_count_store
- *
- * @param  class
- * @param  attr
- * @param  buf
- * @param  count
- *
- * @return
- */
-/* --------------------------------------------------------------------------*/
-static ssize_t eth_count_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+static ssize_t eth_rxthrcount_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
 {
 	unsigned int cnt = 0;
-
 	cnt = simple_strtoul(buf, NULL, 0);
-	if (cnt == 0) {
-		printk("reset ethernet tx/rx count.\n");
-		g_tx_cnt = 0;
-		g_rx_cnt = 0;
+	if ((cnt >= RX_THROTL) && (cnt <= RX_RING_SIZE)) {
+		printk("loaded new rx_throttle\n");
+		g_rx_cnt = cnt;
 	} else {
-		printk("reset ethernet count error\n");
+		printk("error loading new rx_throttle\n");
 	}
-
 	return count;
 }
+static ssize_t eth_txthrcount_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	printk("Ethernet TX throttle value: %d\n", g_tx_cnt);
+	return (sprintf(buf,"%d\nRange: %d - %d\n", g_tx_cnt, TX_THROTL, TX_RING_SIZE));
+}
+
+static ssize_t eth_txthrcount_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int cnt = 0;
+	cnt = simple_strtoul(buf, NULL, 0);
+	if ((cnt >= TX_THROTL) && (cnt <= TX_RING_SIZE)) {
+		printk("loaded new tx_throttle\n");
+		g_tx_cnt = cnt;
+	} else {
+		printk("error loading new tx_throttle\n");
+	}
+	return count;
+}
+/*--------------------------------------------------------------------------*/
 
 static const char *g_wol_help = {
 	"Ethernet WOL:\n"
@@ -2768,7 +2777,8 @@ static ssize_t eth_cali_store(struct class *class, struct class_attribute *attr,
 static struct class *eth_sys_class;
 static CLASS_ATTR(mdcclk, S_IWUSR | S_IRUGO, eth_mdcclk_show, eth_mdcclk_store);
 static CLASS_ATTR(debug, S_IWUSR | S_IRUGO, eth_debug_show, eth_debug_store);
-static CLASS_ATTR(count, S_IWUSR | S_IRUGO, eth_count_show, eth_count_store);
+static CLASS_ATTR(txthrottle, S_IWUSR | S_IRUGO, eth_txthrcount_show, eth_txthrcount_store);
+static CLASS_ATTR(rxthrottle, S_IWUSR | S_IRUGO, eth_rxthrcount_show, eth_rxthrcount_store);
 static CLASS_ATTR(phyreg, S_IWUSR | S_IRUGO, eth_phyreg_help, eth_phyreg_func);
 static CLASS_ATTR(macreg, S_IWUSR | S_IRUGO, eth_macreg_help, eth_macreg_func);
 static CLASS_ATTR(wol, S_IWUSR | S_IRUGO, eth_wol_show, eth_wol_store);
@@ -2795,7 +2805,8 @@ static int __init am_eth_class_init(void)
 	eth_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
 	ret = class_create_file(eth_sys_class, &class_attr_mdcclk);
 	ret = class_create_file(eth_sys_class, &class_attr_debug);
-	ret = class_create_file(eth_sys_class, &class_attr_count);
+	ret = class_create_file(eth_sys_class, &class_attr_txthrottle);
+	ret = class_create_file(eth_sys_class, &class_attr_rxthrottle);
 	ret = class_create_file(eth_sys_class, &class_attr_phyreg);
 	ret = class_create_file(eth_sys_class, &class_attr_macreg);
 	ret = class_create_file(eth_sys_class, &class_attr_wol);
