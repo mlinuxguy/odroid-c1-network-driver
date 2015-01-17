@@ -111,6 +111,13 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 		} else {
 			printk("eth: resolved to Slave\n");
 		}
+//== test: disable Nway neg
+		val = phy_read(phydev, 0);
+		val = val & ~((1<<12) | (1<<13));		// disable Aneg, and set one of the speed bits
+		val = val | (1<<6) | (1<<8) | (1<<5);	// full duplex, speed bit, enable pkt w/o link
+        phy_write(phydev, 0, val );
+//
+//== end test		
 // == end: bad switch detection
 		phy_write(phydev, 31, 0x0a43); /* 3, hk test values */
 		phy_write(phydev, 27, 0x8011);
