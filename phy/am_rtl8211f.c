@@ -152,8 +152,10 @@ static struct phy_driver rtl8211e_driver = {
 	.name		= "RTL8211F Gigabit Ethernet",
 	.phy_id_mask	= 0x001fffff,
 #if 1
-	.features	= PHY_GBIT_FEATURES | SUPPORTED_Pause |
-			  SUPPORTED_Asym_Pause,// close 1000m speed
+	.features	= PHY_GBIT_FEATURES | SUPPORTED_Pause,
+//	.features	= PHY_GBIT_FEATURES | SUPPORTED_Pause |
+//			  SUPPORTED_Asym_Pause,// close 1000m speed
+//			  SUPPORTED_Asym_Pause,// close 1000m speed
 	.flags		= PHY_HAS_INTERRUPT | PHY_HAS_MAGICANEG,
 #else
 	.features	= PHY_BASIC_FEATURES | SUPPORTED_Pause |
