@@ -88,9 +88,23 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 
 		val = phy_read(phydev, 0x09);
 		phy_write(phydev, 0x09, val|(1<<9));	// advertise 1000base-T full duplex
+// == bad switch detection starts here (resolves to master instead of slave)
 		val = phy_read(phydev, 0x00);
 		phy_write(phydev, 0x00, val|(1<<9));	// restart auto-neg
-
+		do {} while ((phy_read(phydev, 0x01)) & (1<<5)); // wait out auto-neg
+		val = phy_read(phydev, 0x0a);			// check bit for Master or Slave
+		if (val & (1<<14)) {					// if bit 14 = 1 resolved to Master
+			printk("eth: resolved to Master, negotiation issues\n");
+			val = phy_read(phydev, 0x09);		// setting manual mode and slave
+			val = val | (1<<12);				// manual mode
+			val = val & ~(1<<11);				// manual set to slave
+			phy_write(phydev, 0x0a, val);		// write the config out
+			val = phy_read(phydev, 0x00);
+			phy_write(phydev, 0x00, val|(1<<9));// restart auto-neg, so bits will effect
+		} else {
+			printk("eth: resolved to Slave\n");
+		}
+// == end: bad switch detection
 		phy_write(phydev, 31, 0x0a43); /* 3, hk test values */
 		phy_write(phydev, 27, 0x8011);
 		phy_write(phydev, 28, 0x573f);
