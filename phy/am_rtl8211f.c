@@ -82,6 +82,13 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 //======= testing items that must be set before reset called to have effect =====
 		val = phy_read(phydev, 0x04);
 		phy_write(phydev, 0x04, val|(1<<11)|(1<<10));	// advert asymm pause and pause frames	
+//== test forcing to MDI mode
+        phy_write(phydev, RTL8211F_REGPAGE, 0x0a43);    // return to page 0xa43
+        val = phy_read(phydev, RTL8211F_PHYCR2);
+		val = val | (1<<9);								// set manual MDI/MDIX mode
+		val = val | (1<<8);								// set MDI mode
+        phy_write(phydev, RTL8211F_PHYCR2, val );
+//== end: test forcing of MDI mode
 
         phy_write(phydev, RTL8211F_PHYCTRL, 0x9200);    // PHY reset
         msleep(20); 
