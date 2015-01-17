@@ -165,8 +165,8 @@ static struct phy_driver rtl8211e_driver = {
 	.config_init	= &rtl8211e_config_init,
 //	.ack_interrupt	= &rtl821x_ack_interrupt,
 //	.config_intr	= &rtl8211e_config_intr,
-	.suspend	= genphy_suspend,
-	.resume		= genphy_resume,
+//test	.suspend	= genphy_suspend,
+//	.resume		= genphy_resume,
 	.driver		= { .owner = THIS_MODULE,},
 };
 
