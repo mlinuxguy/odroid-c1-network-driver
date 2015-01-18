@@ -929,9 +929,9 @@ static void aml_adjust_link(struct net_device *dev)
 	unsigned long flags;
 	int new_state = 0;
 	int val;
-
 	if (phydev == NULL)
 		return;
+
 //#define P_PREG_ETHERNET_ADDR0 CBUS_REG_ADDR(PREG_ETHERNET_ADDR0)
 //#define PREG_ETHERNET_ADDR0 0x2042  ///../ucode/register.h:450
 	spin_lock_irqsave(&priv->lock, flags);
@@ -940,6 +940,7 @@ static void aml_adjust_link(struct net_device *dev)
 		PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, val);
 	}
 	if (phydev->link) {
+//#define ETH_MAC_0_Configuration         (0x0000)
 		u32 ctrl = readl((void*)(priv->base_addr + ETH_MAC_0_Configuration));
 
 		/* Now we make sure that we can be in full duplex mode.
@@ -947,12 +948,14 @@ static void aml_adjust_link(struct net_device *dev)
 		if (phydev->duplex != priv->oldduplex) {
 			new_state = 1;
 			if (!(phydev->duplex)) {
+				printk("[adjust link -> eth: half-duplex\n");
 				ctrl &= ~((1 << 11)|(7<< 17)|(3<<5));
 				if(new_maclogic != 0)
 					ctrl |= (4 << 17);
 				ctrl |= (3 << 5);
 			}
 			else {
+				printk("[adjust link -> eth: full-duplex\n");
 				ctrl &= ~((7 << 17)|(3 << 5));
 				ctrl |= (1 << 11);
 				if(new_maclogic != 0)
@@ -963,6 +966,7 @@ static void aml_adjust_link(struct net_device *dev)
 		}
 
 		if (phydev->speed != priv->speed) {
+			printk("[adjust link -> eth: phy_speed <> priv_speed)\n");
 			new_state = 1;
 			if(new_maclogic != 0)
 				PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, 1);
@@ -973,11 +977,13 @@ static void aml_adjust_link(struct net_device *dev)
 					break;
 				case 100:
 					ctrl |= (1 << 14)|(1 << 15);
+					printk("[adjust link -> eth: switching to RGMII 100\n");
 					if(new_maclogic !=0)
 						PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
 					break;
 				case 10:
 					ctrl &= ~((1 << 14)|(3 << 5));//10m half backoff = 00
+					printk("[adjust link -> eth: switching to RGMII 10\n");
 					if(new_maclogic !=0)
 						PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
 					if(phydev->phy_id == INTERNALPHY_ID){
@@ -1010,8 +1016,8 @@ static void aml_adjust_link(struct net_device *dev)
 	}
 
 	if (new_state){
-		if(new_maclogic == 1)
-			read_macreg();
+		if(new_maclogic == 1) read_macreg();
+		printk("[adjust link -> eth: am_adjust_link state change (new_state=true)\n");
 		phy_print_status(phydev);
 	}
 
@@ -1311,7 +1317,7 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 	spin_lock_irqsave(&np->lock, flags);
 	writel(0,(void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));
 
-	if (np->last_tx != NULL) {
+	if (likely(np->last_tx != NULL)) {
 		tx = np->last_tx->next;
 	} else {
 		tx = &np->tx_ring[0];
@@ -1327,7 +1333,7 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 		goto err;
 	}
 #ifdef DMA_USE_SKB_BUF
-	if (tx->skb != NULL) {
+	if (likely(tx->skb != NULL)) {
 		if (tx->buf_dma != 0) {
 			dma_unmap_single(&dev->dev, tx->buf_dma, np->rx_buf_sz, DMA_TO_DEVICE);
 		}
@@ -1351,7 +1357,7 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 #ifndef DMA_USE_SKB_BUF
 	dev_kfree_skb_any(skb);
 #endif
-	if (np->first_tx) {
+	if (likely(np->first_tx)) {
 		np->first_tx = 0;
 		tmp = readl((void*)(np->base_addr + ETH_DMA_6_Operation_Mode));
 		tmp |= (7 << 14) | (1 << 13);
