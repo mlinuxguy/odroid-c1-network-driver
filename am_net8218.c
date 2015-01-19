@@ -921,7 +921,8 @@ static int aml_mac_init(struct net_device *ndev)
 	//mac_pmt_enable(1);
 	return 0;
 }
-
+/*--------------------------*/
+//  https://www.kernel.org/doc/Documentation/networking/phy.txt
 static void aml_adjust_link(struct net_device *dev)
 {
 	struct am_net_private *priv = netdev_priv(dev);
@@ -1082,8 +1083,7 @@ static int aml_phy_init(struct net_device *dev)
                " Link = %d\n", dev->name, phydev->phy_id, phydev->link);
 
         priv->phydev = phydev;
-	if (priv->phydev)
-		phy_start(priv->phydev);
+		if (priv->phydev) phy_start(priv->phydev);
 
         return 0;
 }
