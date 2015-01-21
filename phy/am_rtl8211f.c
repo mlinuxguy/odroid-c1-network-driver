@@ -87,13 +87,13 @@ static int rtl8211e_read_status(struct phy_device *phydev)
 //				printk("phy: mdix mode\n");
 //		}
 		phydev->pause = phydev->asym_pause = 1;
+        phy_write(phydev, RTL8211F_REGPAGE, 0x0000);    // return to page 0
 		return 0;
 }
 
 static int rtl8211e_config_init(struct phy_device *phydev)
 {
 	int val;
-
         /* Disable CLK_OUT */
         phy_write(phydev, RTL8211F_REGPAGE, 0x0a43);    // return to page 0xa43
         val = phy_read(phydev, RTL8211F_PHYCR2);
@@ -122,8 +122,8 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 		phy_write(phydev, 27, 0x8011); // I do it twice since not sure yet if it survives PHY reset
 		phy_write(phydev, 28, 0x573f); // boosted perf about 2-3%
 //======= testing items that must be set before reset called to have effect =====
-//		val = phy_read(phydev, 0x04);
-//		phy_write(phydev, 0x04, val|(1<<11)|(1<<10));	// advert asymm pause and pause frames	
+		val = phy_read(phydev, 0x04);
+		phy_write(phydev, 0x04, val|(1<<11)|(1<<10));	// advert asymm pause and pause frames	
 //== test forcing to MDI mode
 //        phy_write(phydev, RTL8211F_REGPAGE, 0x0a43);    // return to page 0xa43
 //        val = phy_read(phydev, RTL8211F_PHYCR2);
@@ -131,16 +131,25 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 //		val = val | (1<<8);								// set MDI mode
 //       phy_write(phydev, RTL8211F_PHYCR2, val );
 //== end: test forcing of MDI mode
-
+		printk("am_rtl811f called phy reset\n");
         phy_write(phydev, RTL8211F_PHYCTRL, 0x9200);    // PHY reset
-        msleep(20); 
+        msleep(55);		// calls for min 50msec 
 
-		val = phy_read(phydev, 0x09);
-		phy_write(phydev, 0x09, val|(1<<9));	// advertise 1000base-T full duplex
+//		val = phy_read(phydev, 0x09);
+//		phy_write(phydev, 0x09, val|(1<<9));	// advertise 1000base-T full duplex
 // == bad switch detection starts here (resolves to master instead of slave)
 //		val = phy_read(phydev, 0x00);
 //		phy_write(phydev, 0x00, val|(1<<9));	// restart auto-neg
 //		do {} while ((phy_read(phydev, 0x01)) & (1<<5)); // wait out auto-neg
+// == testing what to wait for after a reset... doesn't work always times out
+//        phy_write(phydev, RTL8211F_REGPAGE, 0x0a43);    // return to page 0xa43
+//        for (k=0;k<55000;k++) {				// wait out circuits settling 
+//			val = (phy_read(phydev, RTL8211F_PHYSR) & (1<<2));
+//			if (val) break;		// we are waiting for link up
+//			udelay(1);
+//		} 
+//		if (k>=55000) printk("am_rtl811f timed out waiting for link up\n");
+// == end testing of wait
 //		val = phy_read(phydev, 0x0a);			// check bit for Master or Slave
 //		if (val & (1<<14)) {					// if bit 14 = 1 resolved to Master
 //			printk("eth: resolved to Master, negotiation issues\n");
@@ -172,8 +181,8 @@ static int rtl8211e_config_init(struct phy_device *phydev)
         phy_write(phydev, RTL8211F_MMD_CTRL, 0x4007);
         phy_write(phydev, RTL8211F_MMD_DATA, 0x0);
 //== test uni-directional enable
-		val = phy_read(phydev, 0x00);
-		phy_write(phydev, 0x00, val|(1<<5));// uni-directional packet enable (ignore link ok)
+//		val = phy_read(phydev, 0x00);
+//		phy_write(phydev, 0x00, val|(1<<5));// uni-directional packet enable (ignore link ok)
 //== end test
         
 /* disable 1000m adv*/

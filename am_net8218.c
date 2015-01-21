@@ -412,28 +412,33 @@ static int free_ringdesc(struct net_device *dev)
  * @return
  */
 /* --------------------------------------------------------------------------*/
-//static __attribute__((flatten)) void update_status(struct net_device *dev, unsigned long status,
-static void inline update_status(struct net_device *dev, unsigned long status,
-                                unsigned long mask)
+__attribute__((flatten)) void net_rt_update_status(unsigned long dev_instance)
 {
+//	unsigned long status;
+	struct net_device *dev = (struct net_device *)dev_instance;
 	struct am_net_private *np = netdev_priv(dev);
-#ifdef M_DEBUG_ON
-	if(status & GMAC_MMC_Interrupt){
-			printk("ETH_MMC_ipc_intr_rx = %x\n",readl((void*)(np->base_addr + ETH_MMC_ipc_intr_rx)));
-			printk("ETH_MMC_intr_rx = %x\n",readl((void*)(np->base_addr + ETH_MMC_intr_rx)));
-	}
-#endif
-	if (likely(status & NOR_INTR_EN)) {	//Normal Interrupts Process
-		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
+//	status = np->status;
+//	if (likely(status & NOR_INTR_EN)) {	//Normal Interrupts Process
+//		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
 			writel((1 << 6 | 1 << 16), (void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->rx_tasklet);
-		}
-		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
+//		}
+//		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
 			writel(1,(void*)(np->base_addr + ETH_DMA_1_Tr_Poll_Demand));
 			netif_wake_queue(dev);
 			writel((1 << 0 | 1 << 16),(void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->tx_tasklet);
-		}
+//		}
+//	}
+	tasklet_schedule(&np->st_tasklet);
+}
+
+__attribute__((flatten)) void net_update_status(unsigned long dev_instance)
+{
+	unsigned long status;
+	struct net_device *dev = (struct net_device *)dev_instance;
+	struct am_net_private *np = netdev_priv(dev);
+	status = np->status;
 		if (unlikely(status & EARLY_RX_INTR_EN)) {
 			writel((EARLY_RX_INTR_EN | NOR_INTR_EN),(void*) (np->base_addr + ETH_DMA_5_Status));
 		}
@@ -441,23 +446,13 @@ static void inline update_status(struct net_device *dev, unsigned long status,
 			writel((1 << 2 | 1 << 16), (void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->tx_tasklet);
 			//this error will cleard in start tx...
-#ifdef M_DEBUG_ON
-			if (g_debug > 1) {
-				printk(KERN_WARNING "[" DRV_NAME "]" "Tx bufer unenable\n");
-			}
-#endif
 		}
-	} else if (unlikely(status & ANOR_INTR_EN)) {	//Abnormal Interrupts Process
+	if (unlikely(status & ANOR_INTR_EN)) {	//Abnormal Interrupts Process
 		if (status & RX_BUF_UN) {
 			writel((RX_BUF_UN | ANOR_INTR_EN),(void*) (np->base_addr + ETH_DMA_5_Status));
 			np->stats.rx_over_errors++;
 			writel(1, (void*)(np->base_addr + ETH_DMA_2_Re_Poll_Demand));
 			tasklet_schedule(&np->rx_tasklet);
-#ifdef M_DEBUG_ON
-			if (g_debug > 1) {
-				printk(KERN_WARNING "[" DRV_NAME "]" "Rx bufer unenable\n");
-			}
-#endif
 		}
 		if (status & RX_STOP_EN) {
 			writel((RX_STOP_EN | ANOR_INTR_EN),
@@ -519,7 +514,6 @@ static void inline update_status(struct net_device *dev, unsigned long status,
 			tasklet_schedule(&np->tx_tasklet);
 		}
 	}
-	return;
 }
 
 /* --------------------------------------------------------------------------*/
@@ -786,14 +780,14 @@ static __attribute__((flatten)) irqreturn_t intr_handler(int irq, void *dev_inst
 {
 	struct net_device *dev = (struct net_device *)dev_instance;
 	struct am_net_private *np = netdev_priv(dev);
-	unsigned long status = 0;
-	unsigned long mask = 0;
 	writel(0, (void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));//disable irq
 //	np->pmt = readl((void*)(np->base_addr + ETH_MAC_PMT_Control_and_Status));
 //	apparently above not used in the driver
-	status = readl((void*)(np->base_addr + ETH_DMA_5_Status));
-	mask = readl((void*)(np->base_addr + ETH_MAC_Interrupt_Mask));
-	update_status(dev, status, mask);
+	np->status = readl((void*)(np->base_addr + ETH_DMA_5_Status));
+//	mask = readl((void*)(np->base_addr + ETH_MAC_Interrupt_Mask));
+//	not used in driver
+	tasklet_hi_schedule(&np->rt_tasklet);
+//	update_status(dev, status);
 	return IRQ_HANDLED;
 }
 
@@ -880,8 +874,11 @@ static int aml_mac_init(struct net_device *ndev)
 {
 	struct am_net_private *np = netdev_priv(ndev);
 	unsigned long val;
-
+	int k;
+// based on an old am_net8218.c below should be mac reset
 	writel(1, (void*)(np->base_addr + ETH_DMA_0_Bus_Mode));
+// below waits for mac to reset
+	for (k=0;(readl((void*)(np->base_addr + ETH_DMA_6_Operation_Mode)) & 1) && k<1000;k++) udelay(1);
 	writel(0x00100800,(void*)(np->base_addr + ETH_DMA_0_Bus_Mode));
 
 	printk("--1--write mac add to:");
@@ -936,7 +933,7 @@ static void aml_adjust_link(struct net_device *dev)
 //#define P_PREG_ETHERNET_ADDR0 CBUS_REG_ADDR(PREG_ETHERNET_ADDR0)
 //#define PREG_ETHERNET_ADDR0 0x2042  ///../ucode/register.h:450
 	spin_lock_irqsave(&priv->lock, flags);
-	if(phydev->phy_id == INTERNALPHY_ID){
+	if(phydev->phy_id == INTERNALPHY_ID) {
 		val = (8<<27)|(7 << 24)|(1<<16)|(1<<15)|(1 << 13)|(1 << 12)|(4 << 4)|(0 << 1);
 		PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, val);
 	}
@@ -949,28 +946,25 @@ static void aml_adjust_link(struct net_device *dev)
 		if (phydev->duplex != priv->oldduplex) {
 			new_state = 1;
 			if (!(phydev->duplex)) {
-				printk("[adjust link -> eth: half-duplex\n");
+				printk("[adjust link] -> eth: half-duplex\n");
 				ctrl &= ~((1 << 11)|(7<< 17)|(3<<5));
 				if(new_maclogic != 0)
 					ctrl |= (4 << 17);
 				ctrl |= (3 << 5);
 			}
 			else {
-				printk("[adjust link -> eth: full-duplex\n");
+				printk("[adjust link] -> eth: full-duplex\n");
 				ctrl &= ~((7 << 17)|(3 << 5));
 				ctrl |= (1 << 11);
 				if(new_maclogic != 0)
 					ctrl |= (2 << 17);
 			}
-
 			priv->oldduplex = phydev->duplex;
 		}
-
 		if (phydev->speed != priv->speed) {
-			printk("[adjust link -> eth: phy_speed <> priv_speed)\n");
+			printk("[adjust link] -> eth: phy_speed <> priv_speed)\n");
 			new_state = 1;
-			if(new_maclogic != 0)
-				PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, 1);
+			if(new_maclogic != 0) PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, 1);
 			switch (phydev->speed) {
 				case 1000:
 					ctrl &= ~((1 << 14)|(1 << 15));//1000m 
@@ -978,16 +972,14 @@ static void aml_adjust_link(struct net_device *dev)
 					break;
 				case 100:
 					ctrl |= (1 << 14)|(1 << 15);
-					printk("[adjust link -> eth: switching to RGMII 100\n");
-					if(new_maclogic !=0)
-						PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
+					printk("[adjust link] -> eth: switching to RGMII 100\n");
+					if(new_maclogic !=0) PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
 					break;
 				case 10:
 					ctrl &= ~((1 << 14)|(3 << 5));//10m half backoff = 00
-					printk("[adjust link -> eth: switching to RGMII 10\n");
-					if(new_maclogic !=0)
-						PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
-					if(phydev->phy_id == INTERNALPHY_ID){
+					printk("[adjust link] -> eth: switching to RGMII 10\n");
+					if(new_maclogic !=0) PERIPHS_CLEAR_BITS(P_PREG_ETHERNET_ADDR0, (1 << 1));
+					if(phydev->phy_id == INTERNALPHY_ID) {
 						val =0x4100b040;
 						WRITE_CBUS_REG(P_PREG_ETHERNET_ADDR0, val);
 					}
@@ -997,13 +989,10 @@ static void aml_adjust_link(struct net_device *dev)
 								" or 100!\n", dev->name, phydev->speed);
 					break;
 			}
-			if(new_maclogic !=0)
-				PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, 1);
+			if(new_maclogic !=0) PERIPHS_SET_BITS(P_PREG_ETHERNET_ADDR0, 1);
 			priv->speed = phydev->speed;
 		}
-
 		writel(ctrl, (void*)(priv->base_addr + ETH_MAC_0_Configuration));
-
 		if (!priv->oldlink) {
 			new_state = 1;
 			priv->oldlink = 1;
@@ -1013,17 +1002,13 @@ static void aml_adjust_link(struct net_device *dev)
 		priv->oldlink = 0;
 		priv->speed = 0;
 		priv->oldduplex = -1;
-
 	}
-
 	if (new_state){
 		if(new_maclogic == 1) read_macreg();
 		printk("[adjust link -> eth: am_adjust_link state change (new_state=true)\n");
 		phy_print_status(phydev);
 	}
-
 	spin_unlock_irqrestore(&priv->lock, flags);
-
 #ifdef LOOP_BACK_TEST
 #ifdef PHY_LOOPBACK_TEST
 	mdio_write(priv->mii, priv->phy_addr, MII_BMCR, BMCR_LOOPBACK | BMCR_SPEED100 | BMCR_FULLDPLX);
@@ -1031,7 +1016,6 @@ static void aml_adjust_link(struct net_device *dev)
 	start_test(priv->dev);
 #endif
 }
-
 
 static int aml_phy_init(struct net_device *dev)
 {
@@ -1048,13 +1032,14 @@ static int aml_phy_init(struct net_device *dev)
 			priv->phy_interface = PHY_INTERFACE_MODE_RMII;
 		else
 			priv->phy_interface = PHY_INTERFACE_MODE_RGMII;
+		// test: works, no idea why above was needed
+		priv->phy_interface = PHY_INTERFACE_MODE_RGMII;
 
         if (priv->phy_addr == -1) {
                 /* We don't have a PHY, so do nothing */
                 pr_err("%s: have no attached PHY\n", dev->name);
                 return -1;
         }
-
         snprintf(bus_id, MII_BUS_ID_SIZE, "%x", 0);
         snprintf(phy_id, MII_BUS_ID_SIZE + 3, PHY_ID_FMT, bus_id,
                  priv->phy_addr);
@@ -1081,12 +1066,11 @@ static int aml_phy_init(struct net_device *dev)
         }
         pr_debug("aml_phy_init:  %s: attached to PHY (UID 0x%x)"
                " Link = %d\n", dev->name, phydev->phy_id, phydev->link);
-
         priv->phydev = phydev;
 		if (priv->phydev) phy_start(priv->phydev);
-
         return 0;
 }
+
 static void read_macreg(void)
 {
 	int reg = 0;
@@ -1265,12 +1249,12 @@ static int netdev_close(struct net_device *dev)
 	writel(0, (void*)(np->base_addr + ETH_DMA_7_Interrupt_Enable));
 	val = readl((void*)(np->base_addr + ETH_DMA_5_Status));
 	while ((val & (7 << 17)) || (val & (7 << 20))) { /*DMA not finished?*/
-		printk(KERN_ERR "ERROR! DMA is not stoped, val=%lx!\n", val);
+		printk(KERN_ERR "ERROR! DMA is not stopped, val=%lx!\n", val);
 		msleep(1);//waiting all dma is finished!!
 		val = readl((void*)(np->base_addr + ETH_DMA_5_Status));
 	}
 	if (g_debug > 0) {
-		printk(KERN_INFO "NET DMA is stoped, ETH_DMA_Status=%lx!\n", val);
+		printk(KERN_INFO "NET DMA is stopped, ETH_DMA_Status=%lx!\n", val);
 	}
 	disable_irq(dev->irq);
 	netif_carrier_off(dev);
@@ -1843,6 +1827,8 @@ static int probe_init(struct net_device *ndev)
 	}
 	tasklet_init(&priv->rx_tasklet, net_taskletrx, (unsigned long)ndev);
 	tasklet_init(&priv->tx_tasklet, net_tasklettx, (unsigned long)ndev);
+	tasklet_init(&priv->st_tasklet, net_update_status, (unsigned long)ndev);
+	tasklet_init(&priv->rt_tasklet, net_rt_update_status, (unsigned long)ndev);
 
 	res = aml_mdio_register(ndev);
 	if (res < 0) {
