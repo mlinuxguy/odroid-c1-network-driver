@@ -345,17 +345,16 @@ __attribute__((flatten)) void net_rt_update_status(unsigned long dev_instance)
 	struct am_net_private *np = netdev_priv(dev);
 	status = np->status;
 	if (likely(status & NOR_INTR_EN)) {	//Normal Interrupts Process
-// commented these out for a perf boost, if checks are costly here			
-//		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
+		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
 			writel((1 << 6 | 1 << 16), (void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->rx_tasklet);
-//		}
-//		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
+		}
+		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
 			writel(1,(void*)(np->base_addr + ETH_DMA_1_Tr_Poll_Demand));
 			netif_wake_queue(dev);
 			writel((1 << 0 | 1 << 16),(void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->tx_tasklet);
-//		}
+		}
 	}
 	tasklet_schedule(&np->st_tasklet);
 }
@@ -510,15 +509,12 @@ __attribute__((flatten)) void net_tasklettx(unsigned long dev_instance)
 	unsigned long flags;
 
 	struct _tx_desc *c_tx, *tx = NULL;
-	int tx_count = 0;
 	/* handle normal tx */
 		c_tx = (void *)readl((void*)(np->base_addr + ETH_DMA_18_Curr_Host_Tr_Descriptor));
 		c_tx = np->tx_ring + (c_tx - np->tx_ring_dma);
 		tx = np->start_tx;
 		CACHE_RSYNC(tx, sizeof(struct _tx_desc));
 		while (likely(tx != NULL && tx != c_tx && !(tx->status & DescOwnByDma))) {
-			tx_count++;
-
 			if(unlikely(!spin_trylock_irqsave(&np->lock,flags)))
 			{
 				break;
@@ -557,7 +553,6 @@ __attribute__((flatten)) void net_taskletrx(unsigned long dev_instance)
 	int len;
 
 	struct _rx_desc *c_rx, *rx = NULL;
-	int rx_cnt = 0;
 	/* handle normal rx */
 		c_rx = (void *)readl((void*)(np->base_addr + ETH_DMA_19_Curr_Host_Re_Descriptor));
 		c_rx = np->rx_ring + (c_rx - np->rx_ring_dma);
@@ -566,7 +561,6 @@ __attribute__((flatten)) void net_taskletrx(unsigned long dev_instance)
 			CACHE_RSYNC(rx, sizeof(struct _rx_desc));
 			if (likely(!(rx->status & (DescOwnByDma)))) {
 				int ip_summed = CHECKSUM_UNNECESSARY;
-				rx_cnt++;
 				len = (rx->status & DescFrameLengthMask) >> DescFrameLengthShift;
 				if (unlikely(len < 18 || len > np->rx_buf_sz)) {	//here is fatal error we drop it ;
 					np->stats.rx_dropped++;
@@ -589,7 +583,6 @@ __attribute__((flatten)) void net_taskletrx(unsigned long dev_instance)
 					printk("NET skb pointer error!!!\n");
 					break;
 				}
-
 				if (likely(rx->buf_dma != 0)) {
 					dma_unmap_single(&dev->dev, rx->buf_dma,/* np->rx_buf_sz*/len, DMA_FROM_DEVICE);
 				}
@@ -2699,6 +2692,19 @@ static int ethernet_probe(struct platform_device *pdev)
 	if(reset_pin_enable){
 		reset_pin_num = amlogic_gpio_name_map_num(reset_pin);
 		amlogic_gpio_request(reset_pin_num, OWNER_NAME);
+	}
+	ret = of_property_read_bool(pdev->dev.of_node, "disable_phyrefclk");
+	if (ret) {
+		int clk_25mout;
+		/* disable pinmux for phy clock 25MHz */
+		aml_clr_reg32_mask(P_PERIPHS_PIN_MUX_6, 1 << 8);
+		clk_25mout = amlogic_gpio_name_map_num("DIF_TTL_3_N");
+		amlogic_disable_pullup(clk_25mout, OWNER_NAME);
+		amlogic_gpio_direction_input(clk_25mout, OWNER_NAME);
+
+		/* disable clock generation for phy */
+		aml_write_reg32(P_PREG_ETH_REG0,
+		aml_read_reg32(P_PREG_ETH_REG0) & ~(1 << 10));
 	}
 
 #endif
