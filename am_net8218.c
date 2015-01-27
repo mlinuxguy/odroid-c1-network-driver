@@ -340,23 +340,21 @@ static int free_ringdesc(struct net_device *dev)
 // rt_tasklet
 __attribute__((flatten)) void net_rt_update_status(unsigned long dev_instance)
 {
-	unsigned long status;
 	struct net_device *dev = (struct net_device *)dev_instance;
 	struct am_net_private *np = netdev_priv(dev);
-	status = np->status;
-	if (likely(status & NOR_INTR_EN)) {	//Normal Interrupts Process
-		if (likely(status & RX_INTR_EN)) {	//Receive Interrupt Process
+	if (likely(np->status & NOR_INTR_EN)) {	//Normal Interrupts Process
+		if (likely(np->status & RX_INTR_EN)) {	//Receive Interrupt Process
 			writel((1 << 6 | 1 << 16), (void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->rx_tasklet);
 		}
-		if (likely(status & TX_INTR_EN)) {	//Transmit Interrupt Process
+		if (likely(np->status & TX_INTR_EN)) {	//Transmit Interrupt Process
 			writel(1,(void*)(np->base_addr + ETH_DMA_1_Tr_Poll_Demand));
 			netif_wake_queue(dev);
 			writel((1 << 0 | 1 << 16),(void*)(np->base_addr + ETH_DMA_5_Status));
 			tasklet_schedule(&np->tx_tasklet);
 		}
 	}
-	tasklet_schedule(&np->st_tasklet);
+	tasklet_schedule(&np->st_tasklet);	// net_update_stats()
 }
  
 // This tasklet does all the error checks
@@ -594,7 +592,7 @@ __attribute__((flatten)) void net_taskletrx(unsigned long dev_instance)
 				skb_put(rx->skb, len);
 				rx->skb->dev = dev;
 				rx->skb->protocol = eth_type_trans(rx->skb, dev);
-				/*we have checked in hardware; we not need check again */
+				/*we have checked in hardware; we do not need to check again */
 				rx->skb->ip_summed = ip_summed;
 				rx->buf_dma = 0;
 				netif_rx(rx->skb);

@@ -5,12 +5,12 @@
 #include <uapi/linux/ethtool.h>
 //#define RTL_SPRD_CLK_MODE	1			// enables spread spectrum clocks, disable for slight boost
 //#define RTL_GREEN_MODE		1			// disable to stop grn mode and slight boost in perf
-#define RTL821x_PHYSR		0x11
+#define RTL821x_PHYSR			0x11
 #define RTL821x_PHYSR_DUPLEX	0x2000
-#define RTL821x_PHYSR_SPEED	0xc000
-#define RTL821x_INER		0x12
-#define RTL821x_INER_INIT	0x6400
-#define RTL821x_INSR		0x13
+#define RTL821x_PHYSR_SPEED		0xc000
+#define RTL821x_INER			0x12
+#define RTL821x_INER_INIT		0x6400
+#define RTL821x_INSR			0x13
 #define RTL8211F_MMD_CTRL       0x0D
 #define RTL8211F_MMD_DATA       0x0E
 #define	RTL8211E_INER_LINK_STAT	0x10
@@ -109,7 +109,7 @@ static int rtl8211e_config_init(struct phy_device *phydev)
 		phy_write(phydev, 27, 0x8011);
 		phy_write(phydev, 28, 0x573f);
 #endif
-// commenting the next 4 out stops net from working, so don't mess with them
+// can modify the last write, 0x00 disables EEE
         phy_write(phydev, RTL8211F_MMD_CTRL, 0x7);		// device 7
         phy_write(phydev, RTL8211F_MMD_DATA, 0x3c);		// address 0x3c
         phy_write(phydev, RTL8211F_MMD_CTRL, 0x4007);	// no post increment, reg 7 again
