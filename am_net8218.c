@@ -52,7 +52,7 @@
 #define DRIVER_NAME "ethernet"
 
 #define DRV_NAME	DRIVER_NAME
-#define DRV_VERSION	"v2.0.2"
+#define DRV_VERSION	"v2.0.3"
 
 #undef CONFIG_HAS_EARLYSUSPEND
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -65,10 +65,6 @@ MODULE_AUTHOR("Platform-BJ@amlogic.com>");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
-// >0 basic init and remove info;
-// >1 further setup info;
-// >2 rx data dump
-// >3 tx data dump
 #undef M_DEBUG_ON		// use this to turn on debug/printk when needed
 #ifdef CONFIG_AM_ETHERNET_DEBUG_LEVEL
 static int g_debug = CONFIG_AM_ETHERNET_DEBUG_LEVEL;
@@ -76,7 +72,6 @@ static int g_debug = CONFIG_AM_ETHERNET_DEBUG_LEVEL;
 static int g_debug = 1;
 #endif
 // These two now control how many packets per tasklet are sent/received
-static int g_mdcclk = 2;
 static int new_maclogic = 0;
 static unsigned int ethbaseaddr = ETHBASE;
 static unsigned int savepowermode = 0;
@@ -2184,83 +2179,6 @@ end:
 	kfree(buff);
 	return 0;
 }
-static const char *g_mdcclk_help = {
-	"Ethernet mdcclk:\n"
-	"    1. ETH_MAC_4_GMII_Addr_CR_60_100.\n"
-	"    2. ETH_MAC_4_GMII_Addr_CR_100_150.\n"
-	"    3. ETH_MAC_4_GMII_Addr_CR_20_35.\n"
-	"    4. ETH_MAC_4_GMII_Addr_CR_35_60.\n"
-	"    5. ETH_MAC_4_GMII_Addr_CR_150_250.\n"
-	"    6. ETH_MAC_4_GMII_Addr_CR_250_300.\n"
-};
-/* --------------------------------------------------------------------------*/
-/**
- * @brief  eth_mdcclk_show
- *
- * @param  class
- * @param  attr
- * @param  buf
- *
- * @return
- */
-/* --------------------------------------------------------------------------*/
-static ssize_t eth_mdcclk_show(struct class *class, struct class_attribute *attr, char *buf)
-{
-	int ret = 0;
-	ret = sprintf(buf, "%s\n", g_mdcclk_help);
-	printk("current ethernet mdcclk: %d\n", g_mdcclk);
-
-	return ret;
-}
-/* --------------------------------------------------------------------------*/
-/**
- * @brief  eth_mdcclk_store
- *
- * @param  class
- * @param  attr
- * @param  buf
- * @param  count
- *
- * @return
- */
-/* --------------------------------------------------------------------------*/
-static ssize_t eth_mdcclk_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
-{
-	unsigned int mdcclk = 0;
-
-	mdcclk = simple_strtoul(buf, NULL, 0);
-	if (mdcclk >= 0 && mdcclk <= 6) {
-		printk("ethernet mdcclk: %d -> %d\n", g_mdcclk, mdcclk);
-		g_mdcclk = mdcclk;
-	} else {
-		printk("set ethernet debug error\n");
-	}
-	switch(g_mdcclk)
-	{
-		case 1:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_60_100;
-		break;
-		case 2:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_100_150;
-		break;
-		case 3:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_20_35;
-		break;
-		case 4:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_35_60;
-		break;
-		case 5:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_150_250;
-		break;
-		case 6:
-		MDCCLK = ETH_MAC_4_GMII_Addr_CR_250_300;
-		break;
-		default:
-		break;
-	}
-
-	return count;
-}
 
 /* --------------------------------------------------------------------------*/
 static const char *phyreset_help = {
@@ -2549,7 +2467,6 @@ static ssize_t eth_cali_store(struct class *class, struct class_attribute *attr,
 
 /* --------------------------------------------------------------------------*/
 static struct class *eth_sys_class;
-static CLASS_ATTR(mdcclk, S_IWUSR | S_IRUGO, eth_mdcclk_show, eth_mdcclk_store);
 static CLASS_ATTR(debug, S_IWUSR | S_IRUGO, eth_debug_show, eth_debug_store);
 static CLASS_ATTR(phyreg, S_IWUSR | S_IRUGO, eth_phyreg_help, eth_phyreg_func);
 static CLASS_ATTR(macreg, S_IWUSR | S_IRUGO, eth_macreg_help, eth_macreg_func);
@@ -2575,7 +2492,6 @@ static int __init am_eth_class_init(void)
 	int ret = 0;
 
 	eth_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
-	ret = class_create_file(eth_sys_class, &class_attr_mdcclk);
 	ret = class_create_file(eth_sys_class, &class_attr_debug);
 	ret = class_create_file(eth_sys_class, &class_attr_phyreg);
 	ret = class_create_file(eth_sys_class, &class_attr_macreg);
